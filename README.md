@@ -1,0 +1,57 @@
+# go-wskit
+
+[![CI](https://github.com/takuya-go-kit/go-wskit/actions/workflows/ci.yml/badge.svg)](https://github.com/takuya-go-kit/go-wskit/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/takuya-go-kit/go-wskit.svg)](https://pkg.go.dev/github.com/takuya-go-kit/go-wskit)
+[![Go Report Card](https://goreportcard.com/badge/github.com/takuya-go-kit/go-wskit)](https://goreportcard.com/report/github.com/takuya-go-kit/go-wskit)
+
+WebSocket hub-and-spoke server on [coder/websocket](https://github.com/coder/websocket) with optional Redis Pub/Sub for multi-instance broadcast.
+
+## Install
+
+```bash
+go get github.com/takuya-go-kit/go-wskit
+```
+
+```go
+import "github.com/takuya-go-kit/go-wskit"
+```
+
+## Features
+
+- **Hub** — single-goroutine dispatcher with register/unregister/broadcast channels, graceful shutdown via context, atomic client count
+- **Client** — ReadPump (drain incoming) + WritePump (send + ping/pong), safe concurrent Send with close protection
+- **Redis Pub/Sub** — BroadcastEvent with JSON serialization, fallback to local broadcast on Redis failure, SubscribeToRedis for horizontal scaling
+- **Event envelope** — `Event{Type, Payload, Timestamp}` standard JSON format, BroadcastJSON helper
+- **Accept helper** — upgrade HTTP to WebSocket + create client + register in one call
+- **Functional options** — configurable timeouts, buffer sizes, callbacks
+
+## Example
+
+```go
+hub := wskit.NewHub(
+    wskit.WithRedis(redisClient, "ws:events"),
+    wskit.WithOnConnect(func(c *wskit.Client) {
+        data, _ := json.Marshal(wskit.NewEvent("connected", nil))
+        c.Send(data)
+    }),
+)
+go hub.Run(ctx)
+go hub.SubscribeToRedis(ctx)
+
+http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+    client, err := wskit.Accept(r.Context(), w, r, hub, nil)
+    if err != nil {
+        return
+    }
+    go client.ReadPump()
+    go client.WritePump()
+})
+
+hub.BroadcastJSON(ctx, "notification", map[string]string{"message": "hello"})
+```
+
+## Options
+
+**Hub:** `WithRedis`, `WithBroadcastBuf`, `WithRegisterBuf`, `WithChannelTimeout`, `WithOnTimeout`, `WithOnConnect`
+
+**Client:** `WithWriteWait`, `WithPingInterval`, `WithMaxMessageSize`, `WithSendBufSize`
