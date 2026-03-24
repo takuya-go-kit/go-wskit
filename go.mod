@@ -1,4 +1,4 @@
-module github.com/takuya-go-kit/go-wskit
+module github.com/wahrwelt-kit/go-wskit
 
 go 1.25.0
 
